@@ -1,4 +1,5 @@
 import java.io.*;
+import java.lang.reflect.Array;
 import java.util.*;
 
 public class StatisticalMT {
@@ -12,24 +13,44 @@ public class StatisticalMT {
     private static HashMap<String, HashMap<String, Double>> countFe;
     private static HashMap<String, Double> totalE;
 	
-    private static int totalWords = 0;
+    private static int totalUnigramCounts = 0;
     private static HashMap<String, Integer> unigramMap = new HashMap<String, Integer>();
-    private static HashMap<String, HashMap<String, Integer>> bigramMap = new HashMap<String, HashMap<String, Integer>>();
+    private static int totalBigramCounts = 0;
+    private static HashMap<String, Integer> bigramMap = new HashMap<String, Integer>();
 	
     public static void main(String[] args) {
         String englishTrainFname = filePrefix + "mytest/mytest.en";
         String spanishTrainFname = filePrefix + "mytest/mytest.es";
-        String englishTestFname = filePrefix + "mytest/mytest.en";
-        String spanishTestFname = filePrefix + "mytest/mytest.es";
         
         List<String> englishTrain = loadList(englishTrainFname);
         List<String> spanishTrain = loadList(spanishTrainFname);
+        for(int i = 0; i < englishTrain.size(); i++){
+        	englishTrain.set(i, englishTrain.get(i).toLowerCase());
+        	spanishTrain.set(i, spanishTrain.get(i).toLowerCase());
+        }
         init(spanishTrain, englishTrain);
         train(spanishTrain, englishTrain);
         
+        
+        String unigramDataFname = "../ngram_data/unigrams.txt";
+        List<String> unigramCounts = loadList(unigramDataFname);
+        initializeUnigramData(unigramCounts);
+        
+        String bigramDataFname = "../ngram_data/bigrams.txt";
+        List<String> bigramCounts = loadList(bigramDataFname);
+        initializeBigramData(bigramCounts);
+        
+
+        String englishTestFname = filePrefix + "mytest/mytest.en";
+        String spanishTestFname = filePrefix + "mytest/mytest.es";
+        
         List<String> englishTest = loadList(englishTestFname);
         List<String> spanishTest = loadList(spanishTestFname);
-        //test(spanishTest, englishTest);
+        for(int i = 0; i < englishTest.size(); i++){
+        	englishTest.set(i, englishTest.get(i).toLowerCase());
+        	spanishTest.set(i, spanishTest.get(i).toLowerCase());
+        }
+        test(spanishTest, englishTest);
     }
     
     private static void init(List<String> f, List<String> e){
@@ -86,12 +107,29 @@ public class StatisticalMT {
             }
         }  
     }
-    
+    private static void initializeUnigramData(List<String> unigramCounts){
+    	for(String str : unigramCounts){
+    		String[] parts = str.split("\t");
+    		String word = parts[0];
+    		int count = Integer.parseInt(parts[1]);
+    		
+    		totalUnigramCounts += count;
+    		unigramMap.put(word, count);
+    	}
+    }
+    private static void initializeBigramData(List<String> bigramCounts){
+    	for(String str : bigramCounts){
+    		String[] parts = str.split("\t");
+    		String word = parts[0];
+    		int count = Integer.parseInt(parts[1]);
+    		
+    		totalBigramCounts += count;
+    		bigramMap.put(word, count);
+    	}
+    }
     
     public static void train(List<String> f, List<String> e) {
-    	createBigramMap(e);
-    	
-        HashMap<String, Integer> fCounts = new HashMap<>();
+    	HashMap<String, Integer> fCounts = new HashMap<>();
         HashMap<String, Integer> eCounts = new HashMap<>(); 
         //Repeat until convergence 
         for(int i = 0; i < NUM_ITERATIONS; i++){
@@ -178,76 +216,126 @@ public class StatisticalMT {
             }
         }
     }
-    private static void createBigramMap(List<String> englishSentences){
-    	for(String sent : englishSentences){
-    		String lastWord = null;
-    		for(String word : sent.split(" ")){
-    			if(lastWord != null) {
-	    			if(!bigramMap.containsKey(lastWord)){
-	    				bigramMap.put(lastWord, new HashMap<String, Integer>());
-	    			}
-	    			if(!bigramMap.get(lastWord).containsKey(word)){
-	    				bigramMap.get(lastWord).put(word, 1);
-	    			}
-	    			bigramMap.get(lastWord).put(word, bigramMap.get(lastWord).get(word) + 1);
-	    			
-	    			if(!unigramMap.containsKey(word)){
-	    	    		unigramMap.put(word, 1);
-	    			}
-	    			unigramMap.put(word, unigramMap.get(word) + 1);
-    			}
-    			else{
-    				if(!unigramMap.containsKey(word)){
-    					unigramMap.put(word, 1);
-    				}
-    				unigramMap.put(word, unigramMap.get(word) + 1);
-    			}
-    			lastWord = word;
-    			totalWords++;
-    		}
-    	}
-    }
-    
     
     private static void test(List<String> f, List<String> e) {
     	for(int i = 0; i < f.size(); i++){
     		String fSent = f.get(i);
-    		String targetESent = f.get(i);
+    		String targetESent = e.get(i);
     		String resultESent = translate(fSent);
     		
     		//TODO: compare targetESent and resultESent
+    		System.out.println("Goal translation: " + targetESent);
+    		System.out.println("Our translation : " + resultESent);
     	}
     }
+    
     private static String translate(String fSent) {
-    	HashMap<String, Double> candidateScores = new HashMap<String, Double>();
+    	int lengthSent = fSent.length(); //aka j
+    	//TODO try other lengths
     	
-		int lengthSent = fSent.length(); //aka j
-    	
-    	//TODO: generate list of candidates, put in hashmap with value 1
-    	
-    	
-    	//calculate P(F|E) for each
-    	for(String candSent : candidateScores.keySet()){
-    		candidateScores.put(candSent, candidateScores.get(candSent) * calculateProbFSentGivenESent(fSent, candSent));
-    	}
-    	
-    	//calculate P(E) for each
-    	for(String candSent : candidateScores.keySet()){
-    		candidateScores.put(candSent, candidateScores.get(candSent) * calculateProbEnglishSent(candSent));
-    	}
-    	
-    	//return the best candidate
-    	String bestCand = null;
-    	double bestScore = 0;
-    	for(String candSent : candidateScores.keySet()){
-    		if(candidateScores.get(candSent) > bestScore){
-    			bestScore = candidateScores.get(candSent);
-    			bestCand = candSent;
-    		}
-    	}
-    	return bestCand;
+    	ArrayList<ArrayList<String>> translations = new ArrayList<ArrayList<String>>();
+        translations.add(new ArrayList<String>());
+        
+        for(String str : fSent.split(" ")){
+            if(tValues.containsKey(str)){
+                HashMap<String, Double> currCandidates = tValues.get(str);
+                double prob = 0.0;
+                String currBest = "";
+                
+                for(String candStr : currCandidates.keySet()){
+                	if(unigramMap.containsKey(candStr)){
+	                	double potentialProb = (((double)unigramMap.get(candStr)) / ((double)totalUnigramCounts)) * currCandidates.get(candStr);
+	                    if(potentialProb > prob){
+	                        prob = potentialProb;
+	                        currBest = candStr;
+	                    }
+                	}
+                }
+                translations.get(0).add(currBest);
+            }
+        }
+        
+        ArrayList<String> bestAlignments = new ArrayList<String>();
+        for(ArrayList<String> bag : translations){
+        	ArrayList<String> temp = new ArrayList<String>(bag);
+        	ArrayList<String> bestAlign = new ArrayList<String>();
+        	bestAlign.add("<S>");
+        	while(temp.size() > 0){
+        		String lastWord = bestAlign.get(bestAlign.size()-1);
+        		String bestNextWord = "";
+        		int bestCount = -1;
+        		for(String potNextWord : temp){
+        			String potBigram = lastWord + " " + potNextWord;
+        			int tempCount = 0;
+        			if(bigramMap.containsKey(potBigram)){
+        				tempCount = bigramMap.get(potBigram);
+        			}
+        			if(tempCount >= bestCount){
+    					bestCount = tempCount;
+    					bestNextWord = potNextWord;
+    				}
+        		}
+        		temp.remove(bestNextWord);
+        		bestAlign.add(bestNextWord);
+        	}
+        	String resSent = "";
+        	for(int i = 1; i < bestAlign.size(); i++) resSent += " " + bestAlign.get(i);
+        	bestAlignments.add(resSent.trim());
+        }
+        
+        return bestAlignments.get(0);
     }
-    private static double calculateProbEnglishSent(String englishSent){ //aka P(E)
+    
+    /*private static String translate(String fSent) {
+    	int lengthSent = fSent.length(); //aka j
+    	
+    	//go through each each word, choose the most probable english equivalent, from t probabilities
+        ArrayList<String> translations = new ArrayList<String>();
+        translations.add("");
+        for(String str : fSent.split(" ")){
+            if(tValues.containsKey(str)){
+                HashMap<String, Double> currCandidates = tValues.get(str);
+                double prob = 0.0;
+                String currBest = "";
+                
+                for(String candStr : currCandidates.keySet()){
+                    if(currCandidates.get(candStr) > prob){
+                        prob = currCandidates.get(candStr);
+                        currBest = candStr;
+                    }
+                }
+                translations.set(0, translations.get(0) + " " +currBest);
+            }
+        }
+        
+    	return calculateBestAlignement(fSent, lengthSent, translations.get(0));
+    }*/
+    private static int[] calculateBestAlignement(String fSent, int numFWords, String eSent){
+        int numEWords = eSent.split(" ").length;
+    	int[] alignment = new int[numEWords];
+
+        List<String> eWords = Arrays.asList(eSent.split(" "));
+        List<String> fWords = Arrays.asList(fSent.split(" "));
+        
+        for(int i = 0; i < numEWords; i++) {
+          String eWord = eWords.get(i);
+          int maxIndex = -1;
+          double maxProb = 0.0;
+          for(int j = 0; j < numFWords; j++) {
+            String fWord = fWords.get(j);
+            double prob = tValues.get(fWord).get(eWord);
+            if(prob >= maxProb) {
+              maxProb = prob;
+              maxIndex = j;
+            }  
+          }
+          alignment[i] = maxIndex;
+        }
+        
+        return alignment;
+    }
+    
+    /*private static double calculateProbEnglishSent(String englishSent){ //aka P(E)
 		String lastWord = null;
 		double prob = 1;
 		for(String word : englishSent.split(" ")){
@@ -265,7 +353,7 @@ public class StatisticalMT {
 			lastWord = word;
 		}
     	return prob;
-    }
+    }*/
     private static double calculateProbFSentGivenESent(String fSent, String eSent){ //aka P(F|E)
     	//TODO: pick epsilon
     	double epsilon = 1;
