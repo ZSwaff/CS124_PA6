@@ -13,14 +13,17 @@ public class StatisticalMT {
     private static HashMap<String, HashMap<String, Double>> countFe;
     private static HashMap<String, Double> totalE;
 	
+    private static int vocabsize = 0;
     private static int totalUnigramCounts = 0;
     private static HashMap<String, Integer> unigramMap = new HashMap<String, Integer>();
     private static int totalBigramCounts = 0;
     private static HashMap<String, Integer> bigramMap = new HashMap<String, Integer>();
+    private static int totalTrigramCounts = 0;
+    private static HashMap<String, Integer> trigramMap = new HashMap<String, Integer>();
 	
     public static void main(String[] args) {
-        String englishTrainFname = filePrefix + "mytest/mytest.en";
-        String spanishTrainFname = filePrefix + "mytest/mytest.es";
+        String englishTrainFname = filePrefix + "train/europarl-v7.es-en.en";
+        String spanishTrainFname = filePrefix + "train/europarl-v7.es-en.es";
         
         List<String> englishTrain = loadList(englishTrainFname);
         List<String> spanishTrain = loadList(spanishTrainFname);
@@ -50,18 +53,26 @@ public class StatisticalMT {
         	englishTest.set(i, englishTest.get(i).toLowerCase());
         	spanishTest.set(i, spanishTest.get(i).toLowerCase());
         }
+        initializeTrigramData(englishTest);
         test(spanishTest, englishTest);
     }
     
     private static void init(List<String> f, List<String> e){
-        eVocab = new HashSet<>();
-        fVocab = new HashSet<>();
+        eVocab = new HashSet<String>();
+        fVocab = new HashSet<String>();
         tValues = new HashMap<String, HashMap<String, Double>>();
         countFe = new HashMap<String, HashMap<String, Double>>();
         totalE = new HashMap<String, Double>();
-        //Build the vocabularies
+
+        //Add "NULL" to the beginning of each f sentence
         int docSize = f.size();
-        for(int i = 0; i < docSize; i++){ 
+        for(int i =0; i < docSize; i++){
+            String newSent = "NULL " + f.get(i);
+            f.set(i, newSent);
+        }
+        
+        //Build the vocabularies
+        for(int i = 0; i < docSize; i++){
             String[] fs = f.get(i).split(" ");
             String[] es = e.get(i).split(" ");
             //Add each word in sentence e to its vocab
@@ -85,34 +96,52 @@ public class StatisticalMT {
                 HashMap<String, Double> feCounts;
                 if(countFe.containsKey(fWord))
                     feCounts = countFe.get(fWord);
-                else feCounts = new HashMap<>();
+                else feCounts = new HashMap<String, Double>();
                 //start t values
                 HashMap<String, Double> fMatches;
                 if(tValues.containsKey(fWord))
                     fMatches = tValues.get(fWord);
-                else fMatches = new HashMap<>();
+                else fMatches = new HashMap<String, Double>();
 
                 double multProb = 1;  
                 for(int k = 0; k < es.length; k++){
-                    feCounts.put(es[k], 0.0); 
-                    double tVal = (double)(1)/(double)eVocab.size();  
-                    multProb *= tVal; 
-                } 
+              //      feCounts.put(es[k], 0.0);
+                    multProb *= 1.0/(double)eVocab.size();
+                }
                 //Normalize
-                for(int k = 0; k < es.length; k++){  
-                    fMatches.put(es[k],multProb/(multProb*es.length));
+                for(int k = 0; k < es.length; k++){
+                    feCounts.put(es[k], 0.0);
+                    //fMatches.put(es[k],multProb/(multProb*es.length));
+                    fMatches.put(es[k], multProb);
                 }
                 tValues.put(fWord, fMatches);
                 countFe.put(fWord, feCounts);
             }
-        }  
+        }
+        //Normalize (M Step)
+        for(String str : tValues.keySet()){
+            HashMap<String, Double> eStrs = tValues.get(str);
+            double sum = 0;
+            for(String eStr : eStrs.keySet()){
+                sum += eStrs.get(eStr);
+            }
+            for(String eStr : eStrs.keySet()){
+                double prevProb = eStrs.get(eStr);
+                eStrs.put(eStr, prevProb/sum);
+            }
+            tValues.put(str, eStrs);
+        }
     }
     private static void initializeUnigramData(List<String> unigramCounts){
     	for(String str : unigramCounts){
     		String[] parts = str.split("\t");
     		String word = parts[0];
-    		int count = Integer.parseInt(parts[1]);
+    		int count = Integer.MAX_VALUE;
+            if (isInteger(parts[1])) {
+                count = Integer.parseInt(parts[1]);
+            }
     		
+            vocabsize++;
     		totalUnigramCounts += count;
     		unigramMap.put(word, count);
     	}
@@ -121,100 +150,192 @@ public class StatisticalMT {
     	for(String str : bigramCounts){
     		String[] parts = str.split("\t");
     		String word = parts[0];
-    		int count = Integer.parseInt(parts[1]);
-    		
-    		totalBigramCounts += count;
+            int count = Integer.MAX_VALUE;
+            if (isInteger(parts[1])) {
+                count = Integer.parseInt(parts[1]);
+            }
+            
+            totalBigramCounts += count;
     		bigramMap.put(word, count);
     	}
     }
+    private static void initializeTrigramData(List<String> englishSentences) {
+        int numSentences = englishSentences.size();
+        for (int i = 0; i < numSentences; i++) {
+            String sentence = englishSentences.get(i);
+            String[] words = sentence.split(" ");
+            if (words.length > 2) {
+                for (int j = 2; j < words.length; j++) {
+                    String trigram = words[j-2] + " " + words[j - 1] + " " + words[j];
+                    if (trigramMap.containsKey(trigram)) {
+                        trigramMap.put(trigram, trigramMap.get(trigram) + 1);
+                    } else {
+                        trigramMap.put(trigram, 1);
+                    }
+                }
+            }
+        }
+    }
+    
+    private static boolean isInteger(String string) {
+        try {
+            Integer.valueOf(string);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
     
     public static void train(List<String> f, List<String> e) {
-    	HashMap<String, Integer> fCounts = new HashMap<>();
-        HashMap<String, Integer> eCounts = new HashMap<>(); 
-        //Repeat until convergence 
-        for(int i = 0; i < NUM_ITERATIONS; i++){
-            //set count(f|e) to 0 for all f,e 
+        
+        for(int iter = 0; iter < NUM_ITERATIONS; iter++){
+            System.out.println(iter);
+            //Copy this over to the tvalues at the end so we don't corrupt our probabilities
             for(String fStr : countFe.keySet()){
                 HashMap<String, Double> feCounts = countFe.get(fStr);
-                for(String eStr : feCounts.keySet()){ 
+                for(String eStr : feCounts.keySet()){
                     feCounts.put(eStr, 0.0);
                 }
                 countFe.put(fStr, feCounts);
             }
             
-            //set total(e) to 0 for all e
-            for(String str : totalE.keySet()){
-                totalE.put(str, 0.0);
-            }
-            
             int docSize = f.size();
-            for(int j = 0; j < docSize; j++){
-                String fs = f.get(j);
-                String es = e.get(j);  
-                //find nf and ne
-                fCounts.clear();
-                for(String fWord : fs.split(" ")){
-                    int fCount = 1;
-                    if(fCounts.containsKey(fWord))
-                        fCount += fCounts.get(fWord);
-                    fCounts.put(fWord, fCount);
-                }
-                eCounts.clear();
-                for(String eWord : es.split(" ")){
-                    int eCount = 1;
-                    if(eCounts.containsKey(eWord))
-                        eCount += eCounts.get(eWord);
-                    eCounts.put(eWord, eCount);
-                } 
+            /*for(int line = 0; line < docSize; line++){
+             String[] fs = f.get(line).split(" ");
+             String[] es = e.get(line).split(" ");
+             double epsilon = 50.0; //decide later on value
+             double l = es.length;
+             double m = fs.length;
+             //create inner sum values
+             HashMap<String, Double> innerSums = new HashMap<>();
+             for(int jprime = 0; jprime < m; jprime ++){
+             double innerSum = 0.0;
+             for(int iprime = 0; iprime < l; iprime ++){
+             innerSum += tValues.get(fs[jprime]).get(es[iprime]);
+             }
+             innerSums.put(fs[jprime], innerSum);
+             }
+             //System.out.println(innerSums);
+             
+             //for every sentence pair
+             for(int j = 0; j < m; j++){
+             double alignmentProb = epsilon/Math.pow((l + 1), m);
+             HashMap<String, Double> eStrs = countFe.get(fs[j]);
+             
+             for(int i = 0; i < l; i++){
+             //System.out.println(tValues.get(fs[j]).get(es[i]));
+             alignmentProb *= tValues.get(fs[j]).get(es[i]);
+             //Calculate the other alignments
+             for(int jprime = 0; jprime < m; jprime ++){
+             double innerSum = 0.0;
+             if(jprime != j){
+             if(innerSums.get(fs[jprime]) > 0)
+             alignmentProb *= (innerSums.get(fs[jprime]));
+             }
+             }
+             eStrs.put(es[i], alignmentProb);
+             }
+             countFe.put(fs[j], eStrs);
+             }
+             }
+             System.out.println(countFe);
+             //M Step: Normalize the count probabilities, copy the new values into the t probabilities
+             for(String str : countFe.keySet()){
+             HashMap<String, Double> newTVals = new HashMap<>();
+             HashMap<String, Double> eStrs = countFe.get(str);
+             double sum = 0;
+             for(String eStr : eStrs.keySet()){
+             sum += eStrs.get(eStr);
+             }
+             for(String eStr : eStrs.keySet()){
+             double prevProb = eStrs.get(eStr);
+             if(prevProb != 0)
+             newTVals.put(eStr, prevProb/sum);
+             else newTVals.put(eStr, 0.0);
+             }
+             tValues.put(str, newTVals);
+             }
+             */
+            //Iterate through every sentence pair
+            for(int line = 0; line < docSize; line++){
+                String[] fs = f.get(line).split(" ");
+                String[] es = e.get(line).split(" ");
                 
-                //for all unique words f in f_s
-                for(String fWord : fCounts.keySet()){
-                    // n_f = count of f in f_s 
-                    int nf = fCounts.get(fWord); 
-                    //total_s = 0
-                    double totalS = 0;
-                    
-                    //for all unique words e in e_s 
-                    for(String eWord : eCounts.keySet()){
-                        //total_s += t(f|e) * n_f  
-                        totalS += tValues.get(fWord).get(eWord) * nf; 
+                //E Step: Calculate count probabilities for each alignment in the sentence pairs
+                for(int j = 0; j < fs.length; j++){
+                    String currF = fs[j];
+                    double total  = 0.0;
+                    HashMap<String, Double> updateStrPair = tValues.get(currF);
+                    for(int i = 0; i < es.length; i++){
+                        //if(updateStrPair.containsKey(es[i]))
+                        total += updateStrPair.get(es[i]);
                     }
                     
-                    
-                    //for all unique words e in e_s
-                    for(String eWord : eCounts.keySet()){
-                        //n_e = count of e in e_s
-                        double ne = eCounts.get(eWord);
-                        //count(f|e) += t(f|e) * n_f * n_e / total_s 
-                        HashMap<String, Double> currCountFe = countFe.get(fWord);
-                        double newCountFe = currCountFe.get(eWord); 
-                        newCountFe += tValues.get(fWord).get(eWord) * nf * ne / totalS;  
-                        currCountFe.put(eWord, newCountFe);
-                        countFe.put(fWord, currCountFe); 
-                        
-                        //total(e) += t(f|e) * n_f * n_e / total_s
-                        double newTotalE = totalE.get(eWord);
-                        newTotalE += tValues.get(fWord).get(eWord) * nf * ne / totalS;
-                        totalE.put(eWord, newTotalE);
+                    for(int i = 0; i < es.length; i++){
+                        String currE = es[i];
+                        // if(updateStrPair.containsKey(es[i])){
+                        double updateProb = (updateStrPair.get(currE) + tValues.get(currF).get(currE)/total);
+                        updateStrPair.put(currE, updateProb);
+                        //}
                     }
+                    countFe.put(currF, updateStrPair);
                 }
             }
-            //for all e in domain( total(.) )
-            for(String eWord : totalE.keySet()){ 
-                //for all f in domain( count(.|e) ) 
-                for(String fWord : countFe.keySet()){ 
-                    //t(f|e) = count(f|e) / total(e)  
-                    //if(countFe.get(fWord).containsKey(eWord)){
-                    if(totalE.get(eWord) > 0.0){
-                        HashMap<String, Double> currT = tValues.get(fWord);
-                        if(currT.containsKey(eWord) && totalE.get(eWord) > 0){ 
-                            currT.put(eWord, ((double)countFe.get(fWord).get(eWord))/((double) totalE.get(eWord)));
-                            tValues.put(fWord, currT);
-                        } 
-                    }
+            //M Step: Normalize the count probabilities, copy the new values into the t probabilities
+            for(String str : countFe.keySet()){
+                HashMap<String, Double> newTVals = new HashMap<String, Double>();
+                HashMap<String, Double> eStrs = countFe.get(str);
+                double sum = 0;
+                for(String eStr : eStrs.keySet()){
+                    sum += eStrs.get(eStr);
                 }
+                for(String eStr : eStrs.keySet()){
+                    double prevProb = eStrs.get(eStr);
+                    newTVals.put(eStr, prevProb/sum);
+                }
+                tValues.put(str, newTVals);
             }
+            /*
+             //Iterate through every sentence pair
+             for(int line = 0; line < docSize; line++){
+             String[] fs = f.get(line).split(" ");
+             String[] es = e.get(line).split(" ");
+             
+             //E Step: Calculate count probabilities for each alignment in the sentence pairs
+             for(int j = 0; j < fs.length; j++){
+             String currF = fs[j];
+             HashMap<String, Double> updateStrPair = countFe.get(currF);
+             for(int i = 0; i < es.length; i++){
+             String currE = es[i];
+             double updateProb = (updateStrPair.get(currE) + tValues.get(currF).get(currE));
+             updateStrPair.put(currE, updateProb);
+             }
+             countFe.put(currF, updateStrPair);
+             }
+             }
+             //M Step: Normalize the count probabilities, copy the new values into the t probabilities
+             for(String str : countFe.keySet()){
+             HashMap<String, Double> newTVals = new HashMap<>();
+             HashMap<String, Double> eStrs = countFe.get(str);
+             double sum = 0;
+             for(String eStr : eStrs.keySet()){
+             sum += eStrs.get(eStr);
+             }
+             for(String eStr : eStrs.keySet()){
+             double prevProb = eStrs.get(eStr);
+             newTVals.put(eStr, prevProb/sum);
+             }
+             tValues.put(str, newTVals);
+             }*/
         }
+        
+        //checking values of casa
+        
+//        HashMap<String, Double> casaCandidates = tValues.get("casa");
+//        double house = casaCandidates.get("house");
+//        double as = casaCandidates.get("as");
+//        System.out.println("house probability for casa: " + house);
+//        System.out.println("as probability for casa: " + as);
     }
     
     private static void test(List<String> f, List<String> e) {
@@ -239,12 +360,12 @@ public class StatisticalMT {
         for(String str : fSent.split(" ")){
             if(tValues.containsKey(str)){
                 HashMap<String, Double> currCandidates = tValues.get(str);
-                double prob = 0.0;
+                double prob = -1.0;
                 String currBest = "";
                 
                 for(String candStr : currCandidates.keySet()){
                 	if(unigramMap.containsKey(candStr)){
-	                	double potentialProb = (((double)unigramMap.get(candStr)) / ((double)totalUnigramCounts)) * currCandidates.get(candStr);
+	                	double potentialProb = (double)unigramMap.get(candStr) * currCandidates.get(candStr);
 	                    if(potentialProb > prob){
 	                        prob = potentialProb;
 	                        currBest = candStr;
@@ -255,35 +376,101 @@ public class StatisticalMT {
             }
         }
         
+//        System.out.println("fsent: " + fSent);
+//        System.out.println("bag of words: ");
+//        ArrayList<String> bagOfWords = translations.get(0);
+//        for (int i = 0; i < bagOfWords.size(); i++) {
+//            System.out.println(bagOfWords.get(i));
+//        }
+        
         ArrayList<String> bestAlignments = new ArrayList<String>();
         for(ArrayList<String> bag : translations){
         	ArrayList<String> temp = new ArrayList<String>(bag);
         	ArrayList<String> bestAlign = new ArrayList<String>();
         	bestAlign.add("<S>");
-        	while(temp.size() > 0){
-        		String lastWord = bestAlign.get(bestAlign.size()-1);
-        		String bestNextWord = "";
-        		int bestCount = -1;
-        		for(String potNextWord : temp){
-        			String potBigram = lastWord + " " + potNextWord;
-        			int tempCount = 0;
-        			if(bigramMap.containsKey(potBigram)){
-        				tempCount = bigramMap.get(potBigram);
-        			}
-        			if(tempCount >= bestCount){
-    					bestCount = tempCount;
-    					bestNextWord = potNextWord;
-    				}
-        		}
-        		temp.remove(bestNextWord);
-        		bestAlign.add(bestNextWord);
-        	}
-        	String resSent = "";
+            
+            //can't use trigrams if there are only 2 words
+            if (temp.size() == 2) {
+                String word1 = temp.get(0);
+                String word2 = temp.get(1);
+                
+                double word1word2BigramScore = bigramScore(word1, word2);
+                double word2word1BigramScore = bigramScore(word2, word1);
+                
+                if (word1word2BigramScore > word2word1BigramScore) {
+                    bestAlign.add(word1);
+                    bestAlign.add(word2);
+                } else {
+                    bestAlign.add(word2);
+                    bestAlign.add(word1);
+                }
+                temp.remove(word1);
+                temp.remove(word2);
+            }
+            
+            while(temp.size() > 0){
+                String lastWord = bestAlign.get(bestAlign.size()-1);
+                String bestNextWord = "";
+                String bestNextNextWord = "";
+                int bestCount = -1;
+                double bestScore = 0.0;
+                for(String potNextWord : temp){
+                    for (String potNextNextWord : temp){
+                        if (potNextNextWord.equals(potNextWord)) continue;
+                        String potTrigram = lastWord + " " + potNextWord + " " + potNextNextWord;
+                        String potBigram = lastWord + " " + potNextWord;
+                        double tempScore = trigramScore(potTrigram, potBigram);
+
+                        if(tempScore >= bestScore){
+                            bestScore = tempScore;
+                            bestNextWord = potNextWord;
+                            bestNextNextWord = potNextNextWord;
+                        }
+                    }
+                }
+                temp.remove(bestNextWord);
+                temp.remove(bestNextNextWord);
+                bestAlign.add(bestNextWord);
+                bestAlign.add(bestNextNextWord);
+            }
+            
+            String resSent = "";
         	for(int i = 1; i < bestAlign.size(); i++) resSent += " " + bestAlign.get(i);
         	bestAlignments.add(resSent.trim());
         }
         
         return bestAlignments.get(0);
+    }
+    
+    
+    private static double trigramScore(String trigram, String bigram){
+        double score = 0.0;
+        if(trigramMap.containsKey(trigram)){
+            score += Math.log(trigramMap.get(trigram) + 1);
+            score -= Math.log(bigramMap.get(bigram) + vocabsize);
+        } else {
+            score += Math.log(1);
+            if(bigramMap.containsKey(bigram)) {
+                score -= Math.log(bigramMap.get(bigram) + vocabsize);
+            } else score -= Math.log(vocabsize);
+        }
+        return 0.50 * score;
+    }
+    
+    private static double bigramScore(String w1, String w2){
+        String bigram = w1 + " " + w2;
+        double score = 0.0;
+        
+        if(bigramMap.containsKey(bigram)){
+            score += Math.log(bigramMap.get(bigram) + 1);
+            score -= Math.log(unigramMap.get(w1) + vocabsize);
+        } else {
+            score += Math.log(1);
+            if(unigramMap.containsKey(w1)) {
+                score -= Math.log(unigramMap.get(w1) + vocabsize);
+            } else score -= Math.log(vocabsize);
+        }
+        return 0.35 * score;
     }
     
     /*private static String translate(String fSent) {
