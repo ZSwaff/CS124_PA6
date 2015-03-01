@@ -14,9 +14,9 @@ public class StatisticalMT {
     private static HashMap<String, Double> totalE;
 	
     private static int vocabsize = 0;
-    private static int totalUnigramCounts = 0;
+    private static long totalUnigramCounts = 0;
     private static HashMap<String, Integer> unigramMap = new HashMap<String, Integer>();
-    private static int totalBigramCounts = 0;
+    private static long totalBigramCounts = 0;
     private static HashMap<String, Integer> bigramMap = new HashMap<String, Integer>();
     private static int totalTrigramCounts = 0;
     private static HashMap<String, Integer> trigramMap = new HashMap<String, Integer>();
@@ -25,16 +25,18 @@ public class StatisticalMT {
         String englishTrainFname = filePrefix + "train/europarl-v7.es-en.en";
         String spanishTrainFname = filePrefix + "train/europarl-v7.es-en.es";
         
+        System.out.println("Loading training data...");
         List<String> englishTrain = loadList(englishTrainFname);
         List<String> spanishTrain = loadList(spanishTrainFname);
         for(int i = 0; i < englishTrain.size(); i++){
         	englishTrain.set(i, englishTrain.get(i).toLowerCase());
         	spanishTrain.set(i, spanishTrain.get(i).toLowerCase());
         }
+        System.out.println("Training...");
         init(spanishTrain, englishTrain);
         train(spanishTrain, englishTrain);
         
-        
+        System.out.println("Loading ngram data...");
         String unigramDataFname = "ngram_data/unigrams.txt";
         List<String> unigramCounts = loadList(unigramDataFname);
         initializeUnigramData(unigramCounts);
@@ -43,10 +45,10 @@ public class StatisticalMT {
         List<String> bigramCounts = loadList(bigramDataFname);
         initializeBigramData(bigramCounts);
         
-
         String englishTestFname = filePrefix + "dev/newstest2012.en";
         String spanishTestFname = filePrefix + "dev/newstest2012.es";
         
+        System.out.println("Loading testing data...");
         List<String> englishTest = loadList(englishTestFname);
         List<String> spanishTest = loadList(spanishTestFname);
         for(int i = 0; i < englishTest.size(); i++){
@@ -54,6 +56,7 @@ public class StatisticalMT {
         	spanishTest.set(i, spanishTest.get(i).toLowerCase());
         }
         initializeTrigramData(englishTest);
+        System.out.println("Testing...");
         test(spanishTest, englishTest);
     }
     
@@ -339,7 +342,6 @@ public class StatisticalMT {
     }
     
     private static void test(List<String> f, List<String> e) {
-    	System.out.println("testing");
     	for(int i = 0; i < f.size(); i++){
     		String fSent = f.get(i);
     		String targetESent = e.get(i);
@@ -362,7 +364,7 @@ public class StatisticalMT {
             if(tValues.containsKey(str)){
                 HashMap<String, Double> currCandidates = tValues.get(str);
                 double prob = 0.0;
-                String currBest = "";
+                String currBest = "blarg";
                 
                 for(String candStr : currCandidates.keySet()){
                 	if(unigramMap.containsKey(candStr)){
@@ -378,6 +380,14 @@ public class StatisticalMT {
             else translations.get(0).add(str);
         }
         
+//        System.out.println("fsent: " + fSent);
+//        System.out.print("bag of words: ");
+//        ArrayList<String> bagOfWords = translations.get(0);
+//        for (int i = 0; i < bagOfWords.size(); i++) {
+//            System.out.print(bagOfWords.get(i) + " ");
+//        }
+//        System.out.println("");
+        
         ArrayList<String> bestAlignments = new ArrayList<String>();
         for(ArrayList<String> bag : translations){
         	ArrayList<String> temp = new ArrayList<String>(bag);
@@ -386,15 +396,11 @@ public class StatisticalMT {
         	while(temp.size() > 0){
         		String lastWord = bestAlign.get(bestAlign.size()-1);
         		String bestNextWord = "";
-        		int bestCount = -1;
+        		double bestBigramScore = Double.NEGATIVE_INFINITY;
         		for(String potNextWord : temp){
-        			String potBigram = lastWord + " " + potNextWord;
-        			int tempCount = 0;
-        			if(bigramMap.containsKey(potBigram)){
-        				tempCount = bigramMap.get(potBigram);
-        			}
-        			if(tempCount >= bestCount){
-    					bestCount = tempCount;
+        			double currBigramScore = bigramScore(lastWord, potNextWord);
+        			if(currBigramScore >= bestBigramScore){
+        				bestBigramScore = currBigramScore;
     					bestNextWord = potNextWord;
     				}
         		}
@@ -526,14 +532,16 @@ public class StatisticalMT {
         
         if(bigramMap.containsKey(bigram)){
             score += Math.log(bigramMap.get(bigram) + 1);
-            score -= Math.log(unigramMap.get(w1) + vocabsize);
+            if(unigramMap.containsKey(w1)) {
+                score -= Math.log(unigramMap.get(w1));
+            } else score -= Math.log(vocabsize);
         } else {
             score += Math.log(1);
             if(unigramMap.containsKey(w1)) {
-                score -= Math.log(unigramMap.get(w1) + vocabsize);
+                score -= Math.log(unigramMap.get(w1));
             } else score -= Math.log(vocabsize);
         }
-        return 0.35 * score;
+        return score;
     }
     
     /*private static String translate(String fSent) {
