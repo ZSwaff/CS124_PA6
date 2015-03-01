@@ -3,9 +3,9 @@ import java.lang.reflect.Array;
 import java.util.*;
 
 public class StatisticalMT {
-	private static final String filePrefix = "../es-en/";
+	private static final String filePrefix = "es-en/";
     //for the repeat until convergence
-    private static final int NUM_ITERATIONS = 5;
+    private static final int NUM_ITERATIONS = 2;
 	
 	private static HashSet<String> eVocab;
     private static HashSet<String> fVocab;
@@ -35,17 +35,17 @@ public class StatisticalMT {
         train(spanishTrain, englishTrain);
         
         
-        String unigramDataFname = "../ngram_data/unigrams.txt";
+        String unigramDataFname = "ngram_data/unigrams.txt";
         List<String> unigramCounts = loadList(unigramDataFname);
         initializeUnigramData(unigramCounts);
         
-        String bigramDataFname = "../ngram_data/bigrams.txt";
+        String bigramDataFname = "ngram_data/bigrams.txt";
         List<String> bigramCounts = loadList(bigramDataFname);
         initializeBigramData(bigramCounts);
         
 
-        String englishTestFname = filePrefix + "mytest/mytest.en";
-        String spanishTestFname = filePrefix + "mytest/mytest.es";
+        String englishTestFname = filePrefix + "dev/newstest2012.en";
+        String spanishTestFname = filePrefix + "dev/newstest2012.es";
         
         List<String> englishTest = loadList(englishTestFname);
         List<String> spanishTest = loadList(spanishTestFname);
@@ -339,14 +339,15 @@ public class StatisticalMT {
     }
     
     private static void test(List<String> f, List<String> e) {
+    	System.out.println("testing");
     	for(int i = 0; i < f.size(); i++){
     		String fSent = f.get(i);
     		String targetESent = e.get(i);
     		String resultESent = translate(fSent);
     		
     		//TODO: compare targetESent and resultESent
-    		System.out.println("Goal translation: " + targetESent);
-    		System.out.println("Our translation : " + resultESent);
+    		//System.out.println("Goal translation: " + targetESent);
+    		System.out.println(/*"Our translation : " + */resultESent);
     	}
     }
     
@@ -358,6 +359,67 @@ public class StatisticalMT {
         translations.add(new ArrayList<String>());
         
         for(String str : fSent.split(" ")){
+            if(tValues.containsKey(str)){
+                HashMap<String, Double> currCandidates = tValues.get(str);
+                double prob = 0.0;
+                String currBest = "";
+                
+                for(String candStr : currCandidates.keySet()){
+                	if(unigramMap.containsKey(candStr)){
+	                	double potentialProb = (((double)unigramMap.get(candStr)) / ((double)totalUnigramCounts)) * currCandidates.get(candStr);
+	                    if(potentialProb > prob){
+	                        prob = potentialProb;
+	                        currBest = candStr;
+	                    }
+                	}
+                }
+                translations.get(0).add(currBest);
+            }
+            else translations.get(0).add(str);
+        }
+        
+        ArrayList<String> bestAlignments = new ArrayList<String>();
+        for(ArrayList<String> bag : translations){
+        	ArrayList<String> temp = new ArrayList<String>(bag);
+        	ArrayList<String> bestAlign = new ArrayList<String>();
+        	bestAlign.add("<S>");
+        	while(temp.size() > 0){
+        		String lastWord = bestAlign.get(bestAlign.size()-1);
+        		String bestNextWord = "";
+        		int bestCount = -1;
+        		for(String potNextWord : temp){
+        			String potBigram = lastWord + " " + potNextWord;
+        			int tempCount = 0;
+        			if(bigramMap.containsKey(potBigram)){
+        				tempCount = bigramMap.get(potBigram);
+        			}
+        			if(tempCount >= bestCount){
+    					bestCount = tempCount;
+    					bestNextWord = potNextWord;
+    				}
+        		}
+        		temp.remove(bestNextWord);
+        		bestAlign.add(bestNextWord);
+        	}
+        	String resSent = "";
+        	for(int i = 1; i < bestAlign.size(); i++) resSent += " " + bestAlign.get(i);
+        	bestAlignments.add(resSent.trim());
+        }
+        
+        return bestAlignments.get(0);
+    }
+    /*private static String translate(String fSent) {
+    	int lengthSent = fSent.length(); //aka j
+    	//TODO try other lengths
+    	
+    	System.out.println("translating " + fSent);
+    	
+    	
+    	ArrayList<ArrayList<String>> translations = new ArrayList<ArrayList<String>>();
+        translations.add(new ArrayList<String>());
+        
+        for(String str : fSent.split(" ")){
+        	System.out.println(str);
             if(tValues.containsKey(str)){
                 HashMap<String, Double> currCandidates = tValues.get(str);
                 double prob = -1.0;
@@ -374,14 +436,15 @@ public class StatisticalMT {
                 }
                 translations.get(0).add(currBest);
             }
+            else translations.get(0).add(str);
         }
         
-//        System.out.println("fsent: " + fSent);
-//        System.out.println("bag of words: ");
-//        ArrayList<String> bagOfWords = translations.get(0);
-//        for (int i = 0; i < bagOfWords.size(); i++) {
-//            System.out.println(bagOfWords.get(i));
-//        }
+        System.out.println("fsent: " + fSent);
+        System.out.println("bag of words: ");
+        ArrayList<String> bagOfWords = translations.get(0);
+        for (int i = 0; i < bagOfWords.size(); i++) {
+            System.out.println(bagOfWords.get(i));
+        }
         
         ArrayList<String> bestAlignments = new ArrayList<String>();
         for(ArrayList<String> bag : translations){
@@ -440,7 +503,7 @@ public class StatisticalMT {
         }
         
         return bestAlignments.get(0);
-    }
+    }*/
     
     
     private static double trigramScore(String trigram, String bigram){
